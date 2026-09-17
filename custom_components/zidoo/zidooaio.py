@@ -689,13 +689,26 @@ class ZidooRC:
                 return_value["bitrate"] = result.get("bitrate")
                 return_value["audio"] = result.get("audioInfo")
                 return_value["video"] = result.get("output")
-                if (
-                    return_value["status"] is True
-                    and return_value["uri"]
-                    and return_value["uri"] != self._last_video_path
-                ):
-                    self._last_video_path = return_value["uri"]
+                
+                # Caching the last video path and checking if it has changed or if we need to look up the video ID again
+                current_uri = return_value["uri"]
+                if not hasattr(self, "_last_video_id_lookup"):
+                    self._last_video_id_lookup = 0.0
+
+                if not current_uri:
+                    self._last_video_path = None
+                    self._video_id = 0
+                    self._movie_info = {}
+                elif current_uri != self._last_video_path or (self._video_id <= 0 and (time.time() - self._last_video_id_lookup) >= 10):
+
+                    # Clear movie info if the current URI has changed since the last lookup
+                    if current_uri != self._last_video_path:
+                        self._movie_info = {}
+                        
+                    self._last_video_path = current_uri
+                    self._last_video_id_lookup = time.time()
                     self._video_id = await self._get_id_from_uri(self._last_video_path)
+                
                 return_value["id"] = self._video_id
                 return return_value
         # _LOGGER.debug("video play info: %s", str(response))
