@@ -44,6 +44,9 @@ class ZidooCoordinator(DataUpdateCoordinator[None]):
         self._last_state = MediaPlayerState.OFF
         self._audio_output_list = []
         self._last_audio_output = None
+        self._audio_tracks = []
+        self._subtitle_tracks = []
+        self._zoom_modes = {}
         self._last_media_id = None
 
         super().__init__(
@@ -120,9 +123,25 @@ class ZidooCoordinator(DataUpdateCoordinator[None]):
                             else:
                                 self._media_type = MediaType.MOVIE
                             self._source = ZCONTENT_VIDEO
+
+                            # INIZIO LOGICA FETCH TRACKS
+                            current_media_id = self._media_info.get("id")
+                            if current_media_id != self._last_media_id:
+                                # Il media e' cambiato, scarica le liste
+                                self._audio_tracks = await self.player.get_audio_list(log_errors=False)
+                                self._subtitle_tracks = await self.player.get_subtitle_list(log_errors=False)
+                                self._zoom_modes = await self.player.get_zoom_list()
+                                self._last_media_id = current_media_id
+                            # FINE LOGICA FETCH TRACKS
+
                         else:
                             self._media_type = MediaType.MUSIC
                             self._source = ZCONTENT_MUSIC
+
+                            # Reset delle tracce se passiamo alla musica
+                            self._audio_tracks = []
+                            self._subtitle_tracks = []
+                            self._last_media_id = None
                     else:
                         self._media_type = MediaType.APP
                     self._last_update = utcnow()
@@ -204,3 +223,18 @@ class ZidooCoordinator(DataUpdateCoordinator[None]):
     def last_updated(self):
         """Last state update."""
         return self._last_update
+
+    @property
+    def audio_tracks(self):
+        """Lista delle tracce audio del video corrente."""
+        return self._audio_tracks
+
+    @property
+    def subtitle_tracks(self):
+        """Lista dei sottotitoli del video corrente."""
+        return self._subtitle_tracks
+
+    @property
+    def zoom_modes(self):
+        """Dizionario delle modalità zoom del video corrente."""
+        return self._zoom_modes

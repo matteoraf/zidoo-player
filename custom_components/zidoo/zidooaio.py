@@ -935,7 +935,7 @@ class ZidooRC:
                 return next(temp, 0)
         return 0
 
-    async def get_subtitle_list(self, log_errors=True) -> dict:
+    async def get_subtitle_list(self, log_errors=True) -> list:
         """Async Get subtitle list.
 
         Returns:
@@ -943,11 +943,9 @@ class ZidooRC:
         """
         response = await self._req_json(ZidooEndpoints.VIDEO_SUBTITLE_LIST, log_errors=log_errors)
         if response is not None and response.get("status") == 200:
-            for result in response["subtitles"]:
-                index = result.get("index")
-                return_values[index] = result.get("title")
-
-        return return_values
+            self._subtitles_tracks = response.get("subtitles", [])
+            return self._subtitles_tracks
+        return []
 
     async def set_subtitle(self, index: int | None = None) -> bool:
         """Async Select subtitle.
@@ -958,18 +956,18 @@ class ZidooRC:
         Return:
             True if successful
         """
-        if index is None:
-            index = self._next_data(
-                await self.get_subtitle_list(), self._current_subtitle
-            )
+        if index is None: 
+            indexes = {t.get("index"): t.get("title") for t in await self.get_subtitle_list()}
+            index = self._next_data(indexes, self._current_subtitle)
 
 
+        response = await self._req_json(f"{ZidooEndpoints.VIDEO_SET_SUBTITLE}?index={index}", log_errors=False)
         if response is not None and response.get("status") == 200:
             self._current_subtitle = index
             return True
         return False
 
-    async def get_audio_list(self) -> dict:
+    async def get_audio_list(self, log_errors=True) -> list:
         """Async Get audio track list.
 
         Returns:
@@ -978,11 +976,9 @@ class ZidooRC:
         """
         response = await self._req_json(ZidooEndpoints.VIDEO_AUDIO_LIST, log_errors=log_errors)
         if response is not None and response.get("status") == 200:
-            for result in response["subtitles"]:
-                index = result.get("index")
-                return_values[index] = result.get("title")
-
-        return return_values
+            self._audio_tracks = response.get("subtitles", [])
+            return self._audio_tracks
+        return []
 
     async def set_audio(self, index: int | None = None) -> bool:
         """Async Select audio track.
@@ -993,8 +989,9 @@ class ZidooRC:
         Return
             True if successful
         """
-        if index is None:
-            index = self._next_data(await self.get_audio_list(), self._current_audio)
+        if index is None: 
+            indexes = {t.get("index"): t.get("title") for t in await self.get_audio_list()}
+            index = self._next_data(indexes, self._current_audio)
 
             
         response = await self._req_json(f"{ZidooEndpoints.VIDEO_SET_AUDIO}?index={index}", log_errors=False)
@@ -1014,9 +1011,7 @@ class ZidooRC:
         response = await self._req_json(ZidooEndpoints.VIDEO_ZOOM_LIST)
         if response is not None and response.get("status") == 200:
             for result in response["zoom"]:
-                index = result.get("index")
-                return_values[index] = result.get("title")
-
+                return_values[result.get("index")] = result.get("title")
         return return_values
 
     async def set_zoom(self, index: str | int | None = None) -> bool:
