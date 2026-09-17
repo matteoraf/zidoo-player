@@ -12,8 +12,10 @@ import logging
 import socket
 import struct
 import urllib.parse
+from asyncio import Lock, Task
+from functools import wraps
 
-from aiohttp import ClientError, ClientSession, CookieJar
+from aiohttp import ClientError, ClientOSError, ClientSession, CookieJar
 from yarl import URL
 
 _LOGGER = logging.getLogger(__name__)
@@ -379,6 +381,10 @@ class ZidooRC:
 
         self._host = f"{host}:{CONF_PORT}"
         self._mac = mac
+        self._mac_addresses = set()
+        if mac:
+            self._mac_addresses.add(mac)
+            
         self._psk = psk
         self._session: ClientSession | None = None
         self._cookies = None
@@ -397,6 +403,12 @@ class ZidooRC:
         self._current_playmode = 0
         self._song_list = []
         self._audio_output_list = []
+
+        self._connect_lock = Lock()
+        self._last_update = None
+        self._last_media_info = {}
+        self._subtitles_tracks = []
+        self._audio_tracks = []
 
     async def _init_device(self):
         """Initialize device on connect."""
@@ -423,21 +435,30 @@ class ZidooRC:
             json
                 raw api response if successful.
         """
-        # /connect?uuid= requires authorization for each client
-        # url = "ZidooControlCenter/connect?name={}&uuid={}&tag=0".format(client_name, client_uuid)
-        # response = await self._req_json(url, log_errors=False)
+        if self._connect_lock.locked():
+            return None
 
-        response = await self.get_system_info(log_errors=False)
+        await self._connect_lock.acquire()
+        try:
+            response = await self.get_system_info(log_errors=False)
 
-        if response and response.get("status") == 200:
-            _LOGGER.debug("connected: %s", response)
-            if self._mac is None:
-                self._mac = response.get("net_mac")
-            self._power_status = True
-
-            await self._init_device()
-            return response
-        return None
+            if response and response.get("status") == 200:
+                _LOGGER.debug("connected: %s", response)
+                
+                if response.get("net_mac"):
+                    self._mac_addresses.add(response.get("net_mac"))
+                if response.get("wif_mac"):
+                    self._mac_addresses.add(response.get("wif_mac"))
+                
+                if not self._mac and self._mac_addresses:
+                    self._mac = list(self._mac_addresses)[0]
+                    
+                self._power_status = True
+                await self._init_device()
+                return response
+            return None
+        finally:
+            self._connect_lock.release()
 
     async def disconnect(self) -> None:
         """Async Close connection."""
@@ -457,21 +478,18 @@ class ZidooRC:
 
     def _wakeonlan(self) -> None:
         """Send WOL command. to known mac addresses."""
-        if self._mac is not None:
-            addr_byte = self._mac.split(":")
-            hw_addr = struct.pack(
-                "BBBBBB",
-                int(addr_byte[0], 16),
-                int(addr_byte[1], 16),
-                int(addr_byte[2], 16),
-                int(addr_byte[3], 16),
-                int(addr_byte[4], 16),
-                int(addr_byte[5], 16),
-            )
-            msg = b"\xff" * 6 + hw_addr * 16
+        messages = []
+        for mac in self._mac_addresses:
+            addr_byte = mac.split(":")
+            if len(addr_byte) == 6:
+                hw_addr = struct.pack("BBBBBB", *[int(b, 16) for b in addr_byte])
+                messages.append(b"\xff" * 6 + hw_addr * 16)
+                
+        if messages:
             socket_instance = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             socket_instance.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            socket_instance.sendto(msg, ("<broadcast>", 9))
+            for msg in messages:
+                socket_instance.sendto(msg, ("<broadcast>", 9))
             socket_instance.close()
 
     async def _send_key(self, key: str, log_errors: bool = False) -> bool:
@@ -584,7 +602,16 @@ class ZidooRC:
         except ClientError as err:
             if log_errors and self._power_status:
                 _LOGGER.info("[I] Client Error: %s", str(err))
-
+            
+            if isinstance(err, ClientOSError):
+                _LOGGER.warning("[%s] OS error, waiting %ss", self._host, ERROR_OS_WAIT)
+                try:
+                    await asyncio.sleep(ERROR_OS_WAIT)
+                    response = await self._session.get(
+                        URL(full_url, encoded=True), params=params, cookies=self._cookies, timeout=timeout, headers=headers
+                    )
+                except Exception:
+                    pass
         except ConnectionError as err:
             if log_errors and self._power_status:
                 _LOGGER.info("[I] Connect Error: %s", str(err))
@@ -604,6 +631,16 @@ class ZidooRC:
     async def load_source_list(self) -> dict:
         """Async Return app list."""
         return await self.get_app_list()
+
+    def _should_keep_stale_media(self) -> bool:
+        if not self._last_media_info or self._last_update is None:
+            return False
+        # Mantiene i metadati se l'ultimo aggiornamento valido è avvenuto entro MEDIA_STATUS_GRACE secondi
+        now = datetime.now(timezone.utc)
+        last = self._last_update
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        return (now - last).total_seconds() <= MEDIA_STATUS_GRACE
 
     async def get_playing_info(self):
         """Async Get playing information of active app.
@@ -653,9 +690,10 @@ class ZidooRC:
             self._last_media_info = return_value
             return return_value
 
-        if not return_value:
-            self._current_source = ZCONTENT_NONE
+        if not return_value and self._should_keep_stale_media():
+            return self._last_media_info
 
+        self._current_source = ZCONTENT_NONE
         return return_value
 
     async def _get_video_playing_info(self):
@@ -731,9 +769,10 @@ class ZidooRC:
                 release = result["aggregation"].get("releaseDate")
                 if release:
                     try:
-                        movie_info["date"] = datetime.strptime(release, "%Y-%m-%d" if  "_" in release else '$Y')  
+                        movie_info["date"] = datetime.strptime(release, "%Y-%m-%d" if "_" in release else '$Y')  
                     except ValueError:
                         _LOGGER.debug("skipping date due to bad format!")
+                        pass
                 tmdb = result["aggregation"].get("tmdbId")
                 if tmdb:
                     movie_info["tmdb_id"] = tmdb

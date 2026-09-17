@@ -44,6 +44,7 @@ class ZidooCoordinator(DataUpdateCoordinator[None]):
         self._last_state = MediaPlayerState.OFF
         self._audio_output_list = []
         self._last_audio_output = None
+        self._last_media_id = None
 
         super().__init__(
             hass,
@@ -91,8 +92,19 @@ class ZidooCoordinator(DataUpdateCoordinator[None]):
                 playing_info = await self.player.get_playing_info()
                 self._media_info = {}
                 if playing_info is None or not playing_info:
-                    self._media_type = MediaType.APP
-                    state = MediaPlayerState.IDLE
+                    # Se il polling fallisce ma la libreria dice di mantenere i vecchi dati
+                    if self.player._should_keep_stale_media():
+                        _LOGGER.debug("Mantenimento metadati zidoo per errore di rete transitorio.")
+                        # Mantiene lo stato precedente
+                        if self._last_state in (MediaPlayerState.PLAYING, MediaPlayerState.PAUSED):
+                            state = self._last_state
+                        else:
+                            state = MediaPlayerState.IDLE
+                    else:
+                        self._media_info = {}
+                        self._media_type = MediaType.APP
+                        state = MediaPlayerState.IDLE
+                        self._last_media_id = None
                 else:
                     self._media_info = playing_info
                     status = playing_info.get("status")
