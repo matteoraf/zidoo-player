@@ -6,7 +6,8 @@ References:
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
+import time
 import logging
 import socket
 import struct
@@ -633,9 +634,10 @@ class ZidooRC:
         if response is not None:
             return_value = response
             return_value["source"] = "video"
-            if return_value.get("status") is True:
-                self._current_source = ZCONTENT_VIDEO
-                return {**return_value, **self._movie_info}
+            self._current_source = ZCONTENT_VIDEO
+            self._last_update = datetime.now(timezone.utc)
+            self._last_media_info = {**return_value, **self._movie_info}
+            return self._last_media_info
 
         if self._audio_output_list:
             response = await self._get_music_playing_info_v2()
@@ -645,9 +647,11 @@ class ZidooRC:
         if response is not None:
             return_value = response
             return_value["source"] = "music"
-            if return_value["status"]:
-                self._current_source = ZCONTENT_MUSIC
-                return return_value
+
+            self._current_source = ZCONTENT_MUSIC
+            self._last_update = datetime.now()
+            self._last_media_info = return_value
+            return return_value
 
         if not return_value:
             self._current_source = ZCONTENT_NONE
