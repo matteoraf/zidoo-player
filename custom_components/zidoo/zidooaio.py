@@ -592,7 +592,7 @@ class ZidooRC:
 
         try:
             response = await self._session.get(
-                URL(url, encoded=True),
+                URL(full_url, encoded=True),
                 params=params,
                 cookies=self._cookies,
                 timeout=timeout,
