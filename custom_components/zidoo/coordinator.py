@@ -223,15 +223,15 @@ class ZidooCoordinator(DataUpdateCoordinator[None]):
 
     @property
     def audio_tracks(self):
-        """Lista delle tracce audio del video corrente."""
+        """Audio tracks for the current video."""
         return self._audio_tracks
 
     @property
     def subtitle_tracks(self):
-        """Lista dei sottotitoli del video corrente."""
+        """Subtitle tracks for the current video."""
         return self._subtitle_tracks
 
     @property
     def zoom_modes(self):
-        """Dizionario delle modalità zoom del video corrente."""
+        """Zoom modes for the current video."""
         return self._zoom_modes
