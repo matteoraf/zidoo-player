@@ -132,6 +132,5 @@ class ZidooZoomSelect(CoordinatorEntity[ZidooCoordinator], SelectEntity):
         return self.coordinator.zoom_modes.get(current_idx)
 
     async def async_select_option(self, option: str) -> None:
-        # La libreria gestisce già il lookup stringa->indice in set_zoom
         await self.coordinator.player.set_zoom(option)
         await self.coordinator.async_request_refresh()

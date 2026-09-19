@@ -635,7 +635,7 @@ class ZidooRC:
     def _should_keep_stale_media(self) -> bool:
         if not self._last_media_info or self._last_update is None:
             return False
-        # Mantiene i metadati se l'ultimo aggiornamento valido è avvenuto entro MEDIA_STATUS_GRACE secondi
+        # Keep metadata in case last update was within MEDIA_STATUS_GRACE seconds
         now = datetime.now(timezone.utc)
         last = self._last_update
         if last.tzinfo is None:

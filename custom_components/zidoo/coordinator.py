@@ -95,10 +95,9 @@ class ZidooCoordinator(DataUpdateCoordinator[None]):
                 playing_info = await self.player.get_playing_info()
                 self._media_info = {}
                 if playing_info is None or not playing_info:
-                    # Se il polling fallisce ma la libreria dice di mantenere i vecchi dati
+                    # If the polling fails but the library says to keep the old data, keep previous state and media info. Otherwise, reset to default values.
                     if self.player._should_keep_stale_media():
-                        _LOGGER.debug("Mantenimento metadati zidoo per errore di rete transitorio.")
-                        # Mantiene lo stato precedente
+                        _LOGGER.debug("Keeping zidoo metadata for transient network error.")
                         if self._last_state in (MediaPlayerState.PLAYING, MediaPlayerState.PAUSED):
                             state = self._last_state
                         else:
@@ -124,21 +123,19 @@ class ZidooCoordinator(DataUpdateCoordinator[None]):
                                 self._media_type = MediaType.MOVIE
                             self._source = ZCONTENT_VIDEO
 
-                            # INIZIO LOGICA FETCH TRACKS
                             current_media_id = self._media_info.get("id")
                             if current_media_id != self._last_media_id:
-                                # Il media e' cambiato, scarica le liste
+                                # Only fetch tracks if the media has changed
                                 self._audio_tracks = await self.player.get_audio_list(log_errors=False)
                                 self._subtitle_tracks = await self.player.get_subtitle_list(log_errors=False)
                                 self._zoom_modes = await self.player.get_zoom_list()
                                 self._last_media_id = current_media_id
-                            # FINE LOGICA FETCH TRACKS
 
                         else:
                             self._media_type = MediaType.MUSIC
                             self._source = ZCONTENT_MUSIC
 
-                            # Reset delle tracce se passiamo alla musica
+                            # Reset arrays if content is music
                             self._audio_tracks = []
                             self._subtitle_tracks = []
                             self._last_media_id = None
