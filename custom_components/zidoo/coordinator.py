@@ -107,6 +107,10 @@ class ZidooCoordinator(DataUpdateCoordinator[None]):
                         self._media_type = MediaType.APP
                         state = MediaPlayerState.IDLE
                         self._last_media_id = None
+                        self._source = None
+                        self._audio_tracks = []
+                        self._subtitle_tracks = []
+                        self._zoom_modes = {}
                 else:
                     self._media_info = playing_info
                     status = playing_info.get("status")

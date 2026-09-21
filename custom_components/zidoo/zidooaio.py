@@ -409,6 +409,7 @@ class ZidooRC:
         self._last_media_info = {}
         self._subtitles_tracks = []
         self._audio_tracks = []
+        self._last_video_id_lookup = 0.0
 
     async def _init_device(self):
         """Initialize device on connect."""
@@ -701,54 +702,52 @@ class ZidooRC:
         return_value = {}
         response = await self._req_json(ZidooEndpoints.VIDEO_PLAY_STATUS, log_errors=False, timeout=TIMEOUT_INFO)
 
-        if response is not None and response.get("status") == 200:
-            if response.get("subtitle"):
-                self._current_subtitle = response["subtitle"].get("index")
-                return_value["subtitle"] = response["subtitle"].get("information")
-            if response.get("audio"):
-                self._current_audio = response["audio"].get("index")
-                # return_value["audio"] = response["audio"].get("information")
-            if response.get("zoom"):
-                self._current_zoom = response["zoom"].get("index")
-                return_value["zoom"] = response["zoom"].get("information")
-            if response.get("playMode"):
-                self._current_playmode = response["playMode"].get("index")
-                return_value["playmode"] = response["playMode"].get("information")
-            if response.get("video"):
-                result = response.get("video")
-                return_value["status"] = result.get("status") == ZSTATE_PLAYING
-                return_value["title"] = result.get("title")
-                return_value["uri"] = result.get("path")
-                return_value["duration"] = result.get("duration")
-                return_value["position"] = result.get("currentPosition")
-                return_value["width"] = result.get("width")
-                return_value["height"] = result.get("height")
-                return_value["fps"] = result.get("fps")
-                return_value["bitrate"] = result.get("bitrate")
-                return_value["audio"] = result.get("audioInfo")
-                return_value["video"] = result.get("output")
-                
-                # Caching the last video path and checking if it has changed or if we need to look up the video ID again
-                current_uri = return_value["uri"]
-                if not hasattr(self, "_last_video_id_lookup"):
-                    self._last_video_id_lookup = 0.0
+        if response is not None: 
+            if response.get("status") == 200:
+                if response.get("subtitle"):
+                    self._current_subtitle = response["subtitle"].get("index")
+                    return_value["subtitle"] = response["subtitle"].get("information")
+                if response.get("audio"):
+                    self._current_audio = response["audio"].get("index")
+                    # return_value["audio"] = response["audio"].get("information")
+                if response.get("zoom"):
+                    self._current_zoom = response["zoom"].get("index")
+                    return_value["zoom"] = response["zoom"].get("information")
+                if response.get("playMode"):
+                    self._current_playmode = response["playMode"].get("index")
+                    return_value["playmode"] = response["playMode"].get("information")
+                if response.get("video"):
+                    result = response.get("video")
+                    return_value["status"] = result.get("status") == ZSTATE_PLAYING
+                    return_value["title"] = result.get("title")
+                    return_value["uri"] = result.get("path")
+                    return_value["duration"] = result.get("duration")
+                    return_value["position"] = result.get("currentPosition")
+                    return_value["width"] = result.get("width")
+                    return_value["height"] = result.get("height")
+                    return_value["fps"] = result.get("fps")
+                    return_value["bitrate"] = result.get("bitrate")
+                    return_value["audio"] = result.get("audioInfo")
+                    return_value["video"] = result.get("output")
+                    
+                    # Caching the last video path and checking if it has changed or if we need to look up the video ID again
+                    current_uri = return_value["uri"]
 
-                if not current_uri:
-                    self._last_video_path = None
-                    self._video_id = 0
-                    self._movie_info = {}
-                elif current_uri != self._last_video_path or (self._video_id <= 0 and (time.time() - self._last_video_id_lookup) >= 10):
-
-                    # Clear movie info if the current URI has changed since the last lookup
-                    if current_uri != self._last_video_path:
-                        self._movie_info = {}
-                        
-                    self._last_video_path = current_uri
-                    self._last_video_id_lookup = time.time()
-                    self._video_id = await self._get_id_from_uri(self._last_video_path)
-                
-                return_value["id"] = self._video_id
-                return return_value
+                    if current_uri and (current_uri != self._last_video_path or (self._video_id <= 0 and (time.time() - self._last_video_id_lookup) >= 10)):
+                        # Clear movie info if the current URI has changed since the last lookup
+                        if current_uri != self._last_video_path:
+                            self._movie_info = {}
+                            
+                        self._last_video_path = current_uri
+                        self._last_video_id_lookup = time.time()
+                        self._video_id = await self._get_id_from_uri(self._last_video_path)
+                    
+                    return_value["id"] = self._video_id
+                    return return_value
+            elif response.get("status") == 806:
+                # No video is playing (resource does not exist).
+                # Reset the stale timer.
+                self._last_update = None
         # _LOGGER.debug("video play info: %s", str(response))
         return None
 
