@@ -569,7 +569,7 @@ class ZidooRC:
                 type: ??
                 movie_name: movie title (movie only)
                 tag: tag line (movie only)
-                date: release date (movie only)
+                date: ase date (movie only)
                 episode: episode number (tv only)
                 episode_name: episode title (tv only)
                 season: season number (tv only)
@@ -667,7 +667,7 @@ class ZidooRC:
                 release = result["aggregation"].get("releaseDate")
                 if release:
                     try:
-                        movie_info["date"] = datetime.strptime(release, "%Y-%m-%d" if  "_" in release else '$Y')  
+                        movie_info["date"] = datetime.strptime(release, "%Y-%m-%d" if  "-" in release else '$Y')  
                     except ValueError:
                         _LOGGER.debug("skipping date due to bad format!")
                 tmdb = result["aggregation"].get("tmdbId")
